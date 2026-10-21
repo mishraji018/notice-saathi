@@ -1,7 +1,7 @@
-import type { UrgencyLevel } from "@/lib/types";
-import { t, type StringKey } from "@/lib/strings";
+import type { Language, UrgencyLevel } from "@/lib/types";
+import { t } from "@/lib/strings";
 
-const STYLES: Record<UrgencyLevel, { badge: string; dot: string; label: StringKey }> = {
+const STYLES: Record<UrgencyLevel, { badge: string; dot: string; label: "urgencyHigh" | "urgencyMedium" | "urgencyLow" }> = {
   high: {
     badge: "border-destructive/25 bg-destructive/10 text-destructive",
     dot: "bg-destructive",
@@ -19,7 +19,7 @@ const STYLES: Record<UrgencyLevel, { badge: string; dot: string; label: StringKe
   },
 };
 
-export function UrgencyBadge({ level }: { level: UrgencyLevel }) {
+export function UrgencyBadge({ level, language }: { level: UrgencyLevel; language: Language }) {
   const style = STYLES[level];
   return (
     <span
@@ -29,13 +29,7 @@ export function UrgencyBadge({ level }: { level: UrgencyLevel }) {
       }
     >
       <span className={"h-2 w-2 rounded-full " + style.dot} aria-hidden="true" />
-      {t("en", style.label) === "" ? "" : ""}
-      <BadgeLabel level={level} />
+      {t(language, style.label)}
     </span>
   );
-}
-
-function BadgeLabel({ level }: { level: UrgencyLevel }) {
-  // Rendered as its own component so the parent stays in the en/hi scope via props below.
-  return null;
 }
