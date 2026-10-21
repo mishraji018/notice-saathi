@@ -34,7 +34,7 @@ const en = {
   trySample: "Try a sample notice",
   demoNotice: "Demo — showing a sample notice",
   keyFacts: "Key facts",
-} as const;
+};
 
 type Strings = typeof en;
 
