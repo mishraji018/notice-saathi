@@ -1,15 +1,17 @@
 """
 AI Agent Service for Notice Saathi.
-Uses Anthropic Claude (claude-sonnet-4-5) to analyze raw OCR text of government notices,
-classify them, extract key facts, assess urgency & scam likelihood, and explain them in simple terms.
+Uses Groq (openai/gpt-oss-120b) as the primary LLM provider (with Anthropic Claude fallback)
+to analyze raw OCR text of notices, classify them, extract key facts, assess urgency & scam likelihood,
+and explain them in simple terms.
 """
 
 import os
 import json
+import logging
 from typing import Literal, Dict, Any, Optional
 from fastapi import HTTPException, status
-import anthropic
-from anthropic import Anthropic
+
+logger = logging.getLogger("notice_saathi.agent")
 
 try:
     from backend.models.notice import NoticeData, ExplanationPoint, Helpline
@@ -57,119 +59,130 @@ You must follow these rules strictly:
    - Set action_required and explanation_points to politely inform the user that this does not appear to be an official notice.
 """
 
-ANALYSIS_TOOL = {
-    "name": "structured_notice_analysis",
-    "description": "Output the structured analysis of the notice document.",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "notice_type": {
-                "type": "string",
-                "description": "Classified type of notice in target language (e.g. 'Income Tax Notice — Section 142(1)').",
-            },
-            "authority": {
-                "type": ["string", "null"],
-                "description": "Issuing authority or department name.",
-            },
-            "deadline": {
-                "type": ["string", "null"],
-                "description": "Deadline date/timeline if present, else null.",
-            },
-            "amount": {
-                "type": ["string", "null"],
-                "description": "Amount demanded or penalty with currency, else null.",
-            },
-            "action_required": {
-                "type": "string",
-                "description": "Direct, plain-language instruction of what action the recipient must take.",
-            },
-            "urgency_level": {
-                "type": "string",
-                "enum": ["high", "medium", "low"],
-                "description": "Urgency rating.",
-            },
-            "scam_likelihood": {
-                "type": "string",
-                "enum": ["high", "medium", "low", "none"],
-                "description": "Likelihood this notice is a scam or fraudulent communication.",
-            },
-            "scam_reasons": {
-                "type": "array",
-                "items": {"type": "string"},
-                "description": "List of specific red flags found, empty if none.",
-            },
-            "explanation_points": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "text": {
-                            "type": "string",
-                            "description": "Simple 6th-grade explanation point in target language.",
-                        },
-                        "source_sentence": {
-                            "type": ["string", "null"],
-                            "description": "Exact verbatim substring from raw_text supporting this point.",
-                        },
-                    },
-                    "required": ["text", "source_sentence"],
-                },
-                "description": "3 to 5 simplified explanation points.",
-            },
-            "helpline": {
-                "type": ["object", "null"],
-                "properties": {
-                    "name": {"type": "string"},
-                    "number": {"type": "string"},
-                },
-                "required": ["name", "number"],
-                "description": "Verified Indian helpline if known, else null.",
-            },
-            "is_high_risk": {
-                "type": "boolean",
-                "description": "True if urgency is high or scam_likelihood is high/medium.",
-            },
+ANALYSIS_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "notice_type": {
+            "type": "string",
+            "description": "Classified type of notice in target language (e.g. 'Income Tax Notice — Section 142(1)').",
         },
-        "required": [
-            "notice_type",
-            "action_required",
-            "urgency_level",
-            "scam_likelihood",
-            "scam_reasons",
-            "explanation_points",
-            "is_high_risk",
-        ],
+        "authority": {
+            "type": ["string", "null"],
+            "description": "Full official issuing department or authority name, or null if unknown.",
+        },
+        "deadline": {
+            "type": ["string", "null"],
+            "description": "Explicit due date or time limit for compliance (e.g. '15 November 2026'), or null.",
+        },
+        "amount": {
+            "type": ["string", "null"],
+            "description": "Total monetary amount demanded or penalty with currency symbol (e.g. '₹48,200'), or null.",
+        },
+        "action_required": {
+            "type": "string",
+            "description": "Concise, plain-language directive stating exactly what the citizen must do.",
+        },
+        "urgency_level": {
+            "type": "string",
+            "enum": ["high", "medium", "low"],
+            "description": "Level of time-sensitivity and severity of consequences.",
+        },
+        "scam_likelihood": {
+            "type": "string",
+            "enum": ["high", "medium", "low", "none"],
+            "description": "Assessed likelihood of the notice being fraudulent or a phishing scam.",
+        },
+        "scam_reasons": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "List of specific red flags found, empty if none.",
+        },
+        "explanation_points": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "text": {
+                        "type": "string",
+                        "description": "Simple 6th-grade explanation point in target language.",
+                    },
+                    "source_sentence": {
+                        "type": ["string", "null"],
+                        "description": "Exact verbatim substring from raw_text supporting this point.",
+                    },
+                },
+                "required": ["text", "source_sentence"],
+            },
+            "description": "3 to 5 simple, accessible explanatory bullet points.",
+        },
+        "helpline": {
+            "type": ["object", "null"],
+            "properties": {
+                "name": {"type": "string"},
+                "number": {"type": "string"},
+            },
+            "required": ["name", "number"],
+            "description": "Verified Indian helpline if known, else null.",
+        },
+        "is_high_risk": {
+            "type": "boolean",
+            "description": "True if urgency is high or scam_likelihood is high/medium.",
+        },
     },
+    "required": [
+        "notice_type",
+        "action_required",
+        "urgency_level",
+        "scam_likelihood",
+        "scam_reasons",
+        "explanation_points",
+        "is_high_risk",
+    ],
 }
 
 
 class AgentService:
     def __init__(self):
-        self._client: Optional[Anthropic] = None
-        self.model_name = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-5")
+        self._provider: Optional[str] = None
+        self._groq_client = None
+        self._anthropic_client = None
 
-    def _get_client(self) -> Anthropic:
-        """Lazy initialization of Anthropic client."""
-        if self._client is not None:
-            return self._client
+    def _init_client(self):
+        """Determine and initialize available LLM client (Groq preferred, Anthropic fallback)."""
+        groq_api_key = os.getenv("GROQ_API_KEY")
+        if groq_api_key and groq_api_key.strip():
+            try:
+                from groq import Groq
+                self._groq_client = Groq(api_key=groq_api_key.strip(), timeout=30.0)
+                self._provider = "groq"
+                self.model_name = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
+                logger.info(f"Using Groq LLM provider with model '{self.model_name}'")
+                return
+            except Exception as e:
+                logger.warning(f"Failed to initialize Groq: {e}")
 
-        api_key = os.getenv("ANTHROPIC_API_KEY")
-        if not api_key:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=(
-                    "ANTHROPIC_API_KEY is not configured. Please set ANTHROPIC_API_KEY in backend/.env."
-                ),
-            )
+        anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
+        if anthropic_api_key and anthropic_api_key.strip():
+            try:
+                import anthropic
+                self._anthropic_client = anthropic.Anthropic(api_key=anthropic_api_key.strip(), timeout=30.0)
+                self._provider = "anthropic"
+                self.model_name = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-5")
+                logger.info(f"Using Anthropic LLM provider with model '{self.model_name}'")
+                return
+            except Exception as e:
+                logger.warning(f"Failed to initialize Anthropic: {e}")
 
-        self._client = Anthropic(api_key=api_key, timeout=30.0)
-        return self._client
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="No LLM API key configured. Please set GROQ_API_KEY (or ANTHROPIC_API_KEY) in backend/.env.",
+        )
 
     async def analyze_notice(
         self, raw_text: str, language: Literal["en", "hi"] = "en"
     ) -> NoticeData:
         """
-        Analyze notice raw text using Claude and return a validated NoticeData instance.
+        Analyze notice raw text and return a validated NoticeData instance.
         """
         if not raw_text or not raw_text.strip():
             raise HTTPException(
@@ -177,7 +190,8 @@ class AgentService:
                 detail="Cannot analyze empty notice text.",
             )
 
-        client = self._get_client()
+        if not self._provider:
+            self._init_client()
 
         lang_label = "Hindi (Devanagari script)" if language == "hi" else "English"
         user_prompt = (
@@ -188,12 +202,113 @@ class AgentService:
             f"--- END RAW NOTICE OCR TEXT ---"
         )
 
+        if self._provider == "groq":
+            return await self._call_groq(user_prompt, raw_text)
+        else:
+            return await self._call_anthropic(user_prompt, raw_text)
+
+    async def _call_groq(self, user_prompt: str, raw_text: str) -> NoticeData:
+        import groq
+
+        tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "structured_notice_analysis",
+                    "description": "Output the structured analysis of the notice document.",
+                    "parameters": ANALYSIS_SCHEMA,
+                },
+            }
+        ]
+
         try:
-            response = client.messages.create(
+            response = self._groq_client.chat.completions.create(
+                model=self.model_name,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": user_prompt},
+                ],
+                tools=tools,
+                tool_choice={"type": "function", "function": {"name": "structured_notice_analysis"}},
+                temperature=0.2,
+            )
+        except groq.APITimeoutError:
+            raise HTTPException(
+                status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+                detail="The AI analysis service timed out (took longer than 30 seconds). Please try again.",
+            )
+        except groq.RateLimitError:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Too many requests, please wait a moment and try again.",
+            )
+        except groq.AuthenticationError:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid Groq API key. Please check GROQ_API_KEY in backend/.env.",
+            )
+        except groq.APIConnectionError:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Could not connect to the AI analysis service. Please check your network and try again.",
+            )
+        except groq.APIStatusError as e:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Groq API error: {e.message}",
+            )
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to communicate with Groq AI agent: {str(e)}",
+            )
+
+        message = response.choices[0].message
+        tool_call_input: Optional[Dict[str, Any]] = None
+
+        if message.tool_calls:
+            try:
+                tool_call_input = json.loads(message.tool_calls[0].function.arguments)
+            except Exception as e:
+                logger.warning(f"Could not parse tool call arguments as JSON: {e}")
+
+        if not tool_call_input and message.content:
+            try:
+                tool_call_input = json.loads(message.content)
+            except Exception:
+                pass
+
+        if not tool_call_input:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="AI model did not return structured analysis data.",
+            )
+
+        tool_call_input["raw_text"] = raw_text
+
+        try:
+            return NoticeData(**tool_call_input)
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Failed to parse structured notice data from AI output: {str(e)}",
+            )
+
+    async def _call_anthropic(self, user_prompt: str, raw_text: str) -> NoticeData:
+        import anthropic
+
+        analysis_tool = {
+            "name": "structured_notice_analysis",
+            "description": "Output the structured analysis of the notice document.",
+            "input_schema": ANALYSIS_SCHEMA,
+        }
+
+        try:
+            response = self._anthropic_client.messages.create(
                 model=self.model_name,
                 max_tokens=4096,
                 system=SYSTEM_PROMPT,
-                tools=[ANALYSIS_TOOL],
+                tools=[analysis_tool],
                 tool_choice={"type": "tool", "name": "structured_notice_analysis"},
                 messages=[{"role": "user", "content": user_prompt}],
             )
@@ -220,7 +335,7 @@ class AgentService:
         except anthropic.APIStatusError as e:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"AI service error: {e.message}",
+                detail=f"Anthropic API error: {e.message}",
             )
         except Exception as e:
             raise HTTPException(
@@ -228,7 +343,6 @@ class AgentService:
                 detail=f"Failed to communicate with Anthropic AI agent: {str(e)}",
             )
 
-        # Extract structured output from tool call
         tool_call_input: Optional[Dict[str, Any]] = None
         for content_block in response.content:
             if content_block.type == "tool_use" and content_block.name == "structured_notice_analysis":
@@ -236,7 +350,6 @@ class AgentService:
                 break
 
         if not tool_call_input:
-            # Fallback check if model returned text JSON
             for content_block in response.content:
                 if content_block.type == "text":
                     try:
@@ -251,13 +364,10 @@ class AgentService:
                 detail="AI model did not return structured analysis data.",
             )
 
-        # Attach original raw_text to response
         tool_call_input["raw_text"] = raw_text
 
-        # Validate and return Pydantic NoticeData model
         try:
-            notice_data = NoticeData(**tool_call_input)
-            return notice_data
+            return NoticeData(**tool_call_input)
         except Exception as e:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
