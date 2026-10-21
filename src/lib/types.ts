@@ -20,8 +20,6 @@ export interface NoticeAnalysis {
   raw_text: string;
   helpline: { name: string; number: string } | null;
   is_high_risk: boolean;
-  /** Set only when the result came from the built-in demo (no backend connected). */
-  is_demo?: boolean;
 }
 
 export interface AnalyzeResponse {

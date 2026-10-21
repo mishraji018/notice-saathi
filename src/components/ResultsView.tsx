@@ -50,7 +50,10 @@ export function ResultsView({ analysis, language, onStartOver }: ResultsViewProp
       setSpeaking(false);
       return;
     }
-    const text = analysis.explanation_points.map((point) => point.text).join(" ");
+    const points = analysis.explanation_points ?? [];
+    const text = points.map((point) => point.text).join(" ");
+    if (!text.trim()) return;
+
     setSpeaking(true);
     await speakText(text, language);
     // The built-in speech cannot report completion reliably; reset after a while.
@@ -67,16 +70,11 @@ export function ResultsView({ analysis, language, onStartOver }: ResultsViewProp
               {t(language, "noticeType")}
             </p>
             <h2 className="mt-1 font-display text-2xl font-bold leading-snug text-foreground">
-              {analysis.notice_type}
+              {analysis.notice_type || (language === "hi" ? "नोटिस विश्लेषण" : "Notice Analysis")}
             </h2>
           </div>
-          <UrgencyBadge level={analysis.urgency_level} language={language} />
+          <UrgencyBadge level={analysis.urgency_level || "medium"} language={language} />
         </div>
-        {analysis.is_demo && (
-          <p className="mt-3 inline-flex rounded-full border border-primary/25 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
-            {t(language, "demoNotice")}
-          </p>
-        )}
       </div>
 
       {/* Scam warning */}
@@ -85,7 +83,7 @@ export function ResultsView({ analysis, language, onStartOver }: ResultsViewProp
           <h3 className="flex items-center gap-2 font-display text-base font-bold text-destructive">
             <span aria-hidden="true">⚠</span> {t(language, "scamWarningTitle")}
           </h3>
-          {analysis.scam_reasons.length > 0 && (
+          {analysis.scam_reasons && analysis.scam_reasons.length > 0 && (
             <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-destructive">
               {analysis.scam_reasons.map((reason, index) => (
                 <li key={index}>{reason}</li>
@@ -110,50 +108,62 @@ export function ResultsView({ analysis, language, onStartOver }: ResultsViewProp
       {/* What this means */}
       <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
         <h3 className="font-display text-lg font-bold text-foreground">{t(language, "whatItMeans")}</h3>
-        <ul className="mt-3 space-y-3">
-          {analysis.explanation_points.map((point, index) => {
-            const open = visibleSource === index;
-            return (
-              <li key={index} className="flex gap-3">
-                <span
-                  className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-primary/10 font-display text-xs font-bold text-primary"
-                  aria-hidden="true"
-                >
-                  {index + 1}
-                </span>
-                <div className="min-w-0">
-                  <p className="text-sm leading-relaxed text-foreground">{point.text}</p>
-                  <button
-                    type="button"
-                    onClick={() => setVisibleSource(open ? null : index)}
-                    className="mt-1 text-xs font-semibold text-primary hover:underline"
+        {analysis.explanation_points && analysis.explanation_points.length > 0 ? (
+          <ul className="mt-3 space-y-3">
+            {analysis.explanation_points.map((point, index) => {
+              const open = visibleSource === index;
+              return (
+                <li key={index} className="flex gap-3">
+                  <span
+                    className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-primary/10 font-display text-xs font-bold text-primary"
+                    aria-hidden="true"
                   >
-                    {open ? t(language, "hideSource") : t(language, "viewSource")}
-                  </button>
-                  {open && (
-                    <blockquote className="mt-1.5 border-l-2 border-primary/40 pl-3 text-sm italic text-muted-foreground">
-                      “{point.source_sentence}”
-                    </blockquote>
-                  )}
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-        <button
-          type="button"
-          onClick={handleListen}
-          className="mt-5 inline-flex items-center gap-2 rounded-full border border-primary/40 bg-primary/10 px-4 py-2 text-sm font-semibold text-primary transition-colors hover:bg-primary/20"
-        >
-          <Icon path={ICONS.speaker} />
-          {speaking ? t(language, "stopListening") : t(language, "listen")}
-        </button>
+                    {index + 1}
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-sm leading-relaxed text-foreground">{point.text}</p>
+                    {point.source_sentence && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setVisibleSource(open ? null : index)}
+                          className="mt-1 text-xs font-semibold text-primary hover:underline"
+                        >
+                          {open ? t(language, "hideSource") : t(language, "viewSource")}
+                        </button>
+                        {open && (
+                          <blockquote className="mt-1.5 border-l-2 border-primary/40 pl-3 text-sm italic text-muted-foreground">
+                            “{point.source_sentence}”
+                          </blockquote>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <p className="mt-3 text-sm text-muted-foreground">{t(language, "noExplanationPoints")}</p>
+        )}
+        {(analysis.explanation_points?.length ?? 0) > 0 && (
+          <button
+            type="button"
+            onClick={handleListen}
+            className="mt-5 inline-flex items-center gap-2 rounded-full border border-primary/40 bg-primary/10 px-4 py-2 text-sm font-semibold text-primary transition-colors hover:bg-primary/20"
+          >
+            <Icon path={ICONS.speaker} />
+            {speaking ? t(language, "stopListening") : t(language, "listen")}
+          </button>
+        )}
       </div>
 
       {/* What you need to do */}
       <div className="rounded-2xl border border-primary/30 bg-primary/5 p-6 shadow-sm">
         <h3 className="font-display text-lg font-bold text-foreground">{t(language, "whatToDo")}</h3>
-        <p className="mt-2 text-sm leading-relaxed text-foreground">{analysis.action_required}</p>
+        <p className="mt-2 text-sm leading-relaxed text-foreground">
+          {analysis.action_required || (language === "hi" ? "कोई तत्काल कार्रवाई निर्दिष्ट नहीं है।" : "No immediate action specified.")}
+        </p>
         {analysis.deadline && (
           <button
             type="button"
@@ -167,7 +177,7 @@ export function ResultsView({ analysis, language, onStartOver }: ResultsViewProp
       </div>
 
       {/* Helpline */}
-      {analysis.helpline && (
+      {analysis.helpline && analysis.helpline.number && (
         <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             {t(language, "helpline")}
@@ -178,7 +188,9 @@ export function ResultsView({ analysis, language, onStartOver }: ResultsViewProp
           >
             <Icon path={ICONS.phone} />
             {analysis.helpline.number}
-            <span className="text-sm font-medium text-muted-foreground">({analysis.helpline.name})</span>
+            {analysis.helpline.name && (
+              <span className="text-sm font-medium text-muted-foreground">({analysis.helpline.name})</span>
+            )}
           </a>
         </div>
       )}

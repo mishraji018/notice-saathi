@@ -36,6 +36,7 @@ export const Route = createFileRoute("/")({
 function Index() {
   const [language, setLanguage] = useState<Language>("en");
   const [status, setStatus] = useState<Status>("idle");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<NoticeAnalysis | null>(null);
 
   const handleLanguageChange = async (next: Language) => {
@@ -52,10 +53,12 @@ function Index() {
 
   const handleFileSelected = async (file: File) => {
     setStatus("loading");
+    setErrorMessage(null);
     try {
       setAnalysis(await analyzeNotice(file, language));
       setStatus("success");
-    } catch {
+    } catch (err: any) {
+      setErrorMessage(err?.message || null);
       setStatus("error");
     }
   };
@@ -63,6 +66,7 @@ function Index() {
   const startOver = () => {
     setStatus("idle");
     setAnalysis(null);
+    setErrorMessage(null);
   };
 
   return (
@@ -106,7 +110,7 @@ function Index() {
 
         {status === "error" && (
           <div className="rounded-2xl border border-destructive/30 bg-destructive/10 p-6 text-center" role="alert">
-            <p className="text-sm font-medium text-destructive">{t(language, "analyzeError")}</p>
+            <p className="text-sm font-medium text-destructive">{errorMessage || t(language, "analyzeError")}</p>
             <button
               type="button"
               onClick={startOver}

@@ -1,60 +1,89 @@
 import type { AnalyzeResponse, Language, NoticeAnalysis } from "./types";
-import { demoAnalysis } from "./demo";
+import { t } from "./strings";
 
 /**
  * Base URL of the backend that implements the contract documented in README.md.
  * Override with VITE_API_BASE_URL; defaults to a local backend.
- * When the backend is unreachable the built-in demo analysis is returned so the
- * full flow stays usable.
  */
-const API_BASE_URL: string = import.meta.env["VITE_API_BASE_URL"] ?? "http://localhost:8000";
+const API_BASE_URL: string =
+  (import.meta.env["VITE_API_BASE_URL"] as string | undefined) ??
+  (import.meta.env["NEXT_PUBLIC_API_BASE_URL"] as string | undefined) ??
+  "http://localhost:8000";
 
-const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-async function postFormAndParse(body: FormData, url: string): Promise<NoticeAnalysis> {
-  const res = await fetch(url, { method: "POST", body });
-  const json = (await res.json()) as AnalyzeResponse;
-  if (!res.ok || json.status !== "success" || !json.data) {
-    throw new Error(json.message ?? "Analysis failed");
-  }
-  return json.data;
-}
-
-/** POST multipart/form-data to /analyze with "file" and "language". */
+/** POST multipart/form-data to /analyze with "file" and "language" (35s timeout + offline guard). */
 export async function analyzeNotice(file: File, language: Language): Promise<NoticeAnalysis> {
+  if (typeof navigator !== "undefined" && !navigator.onLine) {
+    throw new Error(t(language, "offlineError"));
+  }
+
   const body = new FormData();
   body.append("file", file);
   body.append("language", language);
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 35000);
+
   try {
-    return await postFormAndParse(body, `${API_BASE_URL}/analyze`);
-  } catch (err) {
+    const res = await fetch(`${API_BASE_URL}/analyze`, {
+      method: "POST",
+      body,
+      signal: controller.signal,
+    });
+    const json = (await res.json().catch(() => null)) as AnalyzeResponse | null;
+    if (!res.ok || json?.status !== "success" || !json?.data) {
+      throw new Error(json?.message ?? t(language, "analyzeError"));
+    }
+    return json.data;
+  } catch (err: any) {
+    if (err?.name === "AbortError" || controller.signal.aborted) {
+      throw new Error(t(language, "timeoutError"));
+    }
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      throw new Error(t(language, "offlineError"));
+    }
     if (err instanceof TypeError) {
-      // Network failure — no backend connected. Fall back to the demo analysis.
-      await wait(1600);
-      return demoAnalysis(language);
+      throw new Error(t(language, "analyzeError"));
     }
     throw err;
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 
-/** POST JSON to /reexplain — used when switching language without re-uploading. */
+/** POST JSON to /reexplain — used when switching language without re-uploading (35s timeout). */
 export async function reExplain(rawText: string, language: Language): Promise<NoticeAnalysis> {
+  if (typeof navigator !== "undefined" && !navigator.onLine) {
+    throw new Error(t(language, "offlineError"));
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 35000);
+
   try {
     const res = await fetch(`${API_BASE_URL}/reexplain`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ raw_text: rawText, language }),
+      signal: controller.signal,
     });
-    const json = (await res.json()) as AnalyzeResponse;
-    if (!res.ok || json.status !== "success" || !json.data) {
-      throw new Error(json.message ?? "Re-explanation failed");
+    const json = (await res.json().catch(() => null)) as AnalyzeResponse | null;
+    if (!res.ok || json?.status !== "success" || !json?.data) {
+      throw new Error(json?.message ?? "Re-explanation failed");
     }
     return json.data;
-  } catch (err) {
+  } catch (err: any) {
+    if (err?.name === "AbortError" || controller.signal.aborted) {
+      throw new Error(t(language, "timeoutError"));
+    }
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      throw new Error(t(language, "offlineError"));
+    }
     if (err instanceof TypeError) {
-      return demoAnalysis(language);
+      throw new Error(t(language, "analyzeError"));
     }
     throw err;
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 

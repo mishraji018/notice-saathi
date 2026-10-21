@@ -30,11 +30,6 @@ export function UploadCard({ language, onFileSelected }: UploadCardProps) {
     onFileSelected(file);
   };
 
-  const trySample = () => {
-    const sample = new File(["sample"], "sample-notice.pdf", { type: "application/pdf" });
-    onFileSelected(sample);
-  };
-
   return (
     <div className="rounded-2xl border border-border bg-card p-6 shadow-sm sm:p-8">
       <div
@@ -98,16 +93,6 @@ export function UploadCard({ language, onFileSelected }: UploadCardProps) {
           {error}
         </p>
       )}
-
-      <div className="mt-5 text-center">
-        <button
-          type="button"
-          onClick={trySample}
-          className="text-sm font-semibold text-primary hover:underline"
-        >
-          {t(language, "trySample")}
-        </button>
-      </div>
     </div>
   );
 }

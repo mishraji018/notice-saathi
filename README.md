@@ -12,7 +12,7 @@ Upload a government notice (photo or PDF) and get it explained in plain English 
 - Scam warning banner with reasons
 - "Listen" button (text-to-speech), calendar reminder download, official helpline link
 - Full English/Hindi UI; switching language re-explains the notice without re-uploading
-- **Demo mode:** when no backend is reachable, a sample analysis is shown so the full flow stays usable. Results are flagged "Demo — showing a sample notice".
+- Robust error handling: network offline detection, request timeouts (35s), and friendly failure states
 
 ## Run locally
 
@@ -26,7 +26,7 @@ The app runs on `http://localhost:5173` (or the port Vite prints).
 ## Backend API contract
 
 The frontend expects a backend at `VITE_API_BASE_URL` (default `http://localhost:8000`).
-If the backend is unreachable (network error), the frontend silently falls back to demo mode.
+If the backend is unreachable or encounters an error, the frontend displays an informative error card with retry capability.
 
 ### `POST /analyze`
 
@@ -85,4 +85,17 @@ Re-explain previously extracted text in another language (used when the user swi
 
 ## Configuration
 
-- `VITE_API_BASE_URL` — backend base URL (optional; default `http://localhost:8000`)
+- `VITE_API_BASE_URL` or `NEXT_PUBLIC_API_BASE_URL` — backend base URL (optional; default `http://localhost:8000`)
+
+---
+
+## Deployment to Vercel
+
+When deploying the frontend to **Vercel**:
+
+1. Import your Git repository into Vercel.
+2. In **Project Settings** -> **Environment Variables**, add:
+   - `NEXT_PUBLIC_API_BASE_URL` = your live backend URL (e.g. `https://notice-saathi-api.onrender.com`)
+   - `VITE_API_BASE_URL` = your live backend URL (e.g. `https://notice-saathi-api.onrender.com`)
+3. Deploy / Redeploy.
+4. Add your deployed Vercel domain (e.g. `https://your-project.vercel.app`) to `ALLOWED_ORIGINS` on your Render/Railway backend.

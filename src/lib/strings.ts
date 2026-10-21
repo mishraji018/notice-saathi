@@ -31,9 +31,10 @@ const en = {
   switchLang: "Switch language",
   fileTooLarge: "That file is larger than 10 MB.",
   fileWrongType: "Only JPG, PNG and PDF files are supported.",
-  trySample: "Try a sample notice",
-  demoNotice: "Demo — showing a sample notice",
   keyFacts: "Key facts",
+  timeoutError: "The analysis took too long to respond. Please try again.",
+  offlineError: "Check your internet connection and try again.",
+  noExplanationPoints: "No specific explanation points could be derived from this notice.",
 };
 
 type Strings = typeof en;
@@ -69,9 +70,10 @@ const hi: Strings = {
   switchLang: "भाषा बदलें",
   fileTooLarge: "यह फ़ाइल 10 MB से बड़ी है।",
   fileWrongType: "केवल JPG, PNG और PDF फ़ाइलें चलेंगी।",
-  trySample: "नमूना नोटिस आज़माएँ",
-  demoNotice: "डेमो — नमूना नोटिस दिख रहा है",
   keyFacts: "मुख्य बातें",
+  timeoutError: "विश्लेषण में बहुत अधिक समय लगा। कृपया पुनः प्रयास करें।",
+  offlineError: "कृपया अपना इंटरनेट कनेक्शन जाँचें और पुनः प्रयास करें।",
+  noExplanationPoints: "इस नोटिस के लिए कोई विशिष्ट बिंदु उपलब्ध नहीं हैं।",
 };
 
 const strings: Record<Language, Strings> = { en, hi };

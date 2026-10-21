@@ -1,0 +1,13 @@
+fastapi
+uvicorn[standard]
+python-multipart
+google-cloud-vision
+anthropic
+python-dotenv
+pydantic
+gtts
+ics
+pdf2image
+pillow
+python-dateutil
+requests

@@ -25,6 +25,11 @@ dist-ssr
 !.vscode/extensions.json
 .idea
 .DS_Store
+Thumbs.db
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
 *.suo
 *.ntvs*
 *.njsproj
