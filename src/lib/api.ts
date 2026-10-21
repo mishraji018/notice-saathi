@@ -7,7 +7,7 @@ import { demoAnalysis } from "./demo";
  * When the backend is unreachable the built-in demo analysis is returned so the
  * full flow stays usable.
  */
-const API_BASE_URL: string = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+const API_BASE_URL: string = import.meta.env["VITE_API_BASE_URL"] ?? "http://localhost:8000";
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
