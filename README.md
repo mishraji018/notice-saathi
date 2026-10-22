@@ -53,7 +53,7 @@ The web app will run on `http://localhost:5173` (or the port Vite prints).
 | Variable | Description | Default / Example |
 |---|---|---|
 | `GEMINI_API_KEY` | Required for Gemini Vision OCR | `AIzaSy...` |
-| `GEMINI_MODEL` | Gemini OCR model name | `gemini-2.5-flash` |
+| `GEMINI_MODEL` | Gemini OCR model name | `gemini-3.5-flash-lite` |
 | `GROQ_API_KEY` | Primary LLM provider for analysis | `gsk_...` |
 | `GROQ_MODEL` | Primary model on Groq | `openai/gpt-oss-120b` |
 | `ANTHROPIC_API_KEY` | Optional fallback LLM provider | `sk-ant-...` |

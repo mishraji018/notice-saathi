@@ -49,51 +49,60 @@ class OCRService:
             )
 
     def _extract_with_gemini(self, file_bytes: bytes, mime_type: str) -> str:
-        """Send image or PDF bytes directly to Gemini Vision to extract raw text."""
+        """Send image or PDF bytes directly to Gemini Vision to extract raw text with automatic model fallback."""
         client = self._get_client()
-        model_name = os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
+        configured_model = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite").strip() or "gemini-3.5-flash-lite"
+
+        # Prioritize configured model with automatic fallback candidates
+        candidate_models = [configured_model]
+        for fallback in ["gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-2.5-flash"]:
+            if fallback not in candidate_models:
+                candidate_models.append(fallback)
 
         part = types.Part.from_bytes(data=file_bytes, mime_type=mime_type)
-
-        max_attempts = 3
         last_error = None
 
-        for attempt in range(1, max_attempts + 1):
-            try:
-                logger.info(
-                    f"Extracting text with Gemini Vision ({model_name}) | Mime: {mime_type} | Attempt: {attempt}/{max_attempts}"
-                )
-                response = client.models.generate_content(
-                    model=model_name,
-                    contents=[part, OCR_PROMPT],
-                )
+        for model_name in candidate_models:
+            for attempt in range(1, 3):
+                try:
+                    logger.info(
+                        f"Extracting text with Gemini Vision ({model_name}) | Mime: {mime_type} | Attempt: {attempt}/2"
+                    )
+                    response = client.models.generate_content(
+                        model=model_name,
+                        contents=[part, OCR_PROMPT],
+                    )
 
-                text = (response.text or "").strip()
-                if text:
-                    return text
+                    text = (response.text or "").strip()
+                    if text:
+                        return text
 
-                # Check candidate parts if text accessor is empty
-                if response.candidates:
-                    first_cand = response.candidates[0]
-                    if first_cand.content and first_cand.content.parts:
-                        parts_text = "".join(
-                            getattr(p, "text", "") or "" for p in first_cand.content.parts
-                        ).strip()
-                        if parts_text:
-                            return parts_text
+                    # Check candidate parts if text accessor is empty
+                    if response.candidates:
+                        first_cand = response.candidates[0]
+                        if first_cand.content and first_cand.content.parts:
+                            parts_text = "".join(
+                                getattr(p, "text", "") or "" for p in first_cand.content.parts
+                            ).strip()
+                            if parts_text:
+                                return parts_text
 
-                logger.warning(f"Gemini returned empty text on attempt {attempt}/{max_attempts}")
-                last_error = "Empty text response from Gemini"
+                    logger.warning(f"Gemini ({model_name}) returned empty text on attempt {attempt}/2")
+                    last_error = "Empty text response from Gemini"
 
-            except HTTPException:
-                raise
-            except Exception as e:
-                last_error = e
-                logger.warning(f"Gemini Vision request failed on attempt {attempt}/{max_attempts}: {e}")
-                if attempt < max_attempts:
-                    time.sleep(attempt * 1.5)
+                except HTTPException:
+                    raise
+                except Exception as e:
+                    last_error = e
+                    err_str = str(e)
+                    logger.warning(f"Gemini Vision ({model_name}) attempt {attempt}/2 failed: {e}")
+                    # If quota exhausted (429) or model unavailable (404/503), skip straight to next model!
+                    if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str or "404" in err_str or "503" in err_str:
+                        logger.info(f"Model {model_name} rate-limited or unavailable, switching to next candidate model...")
+                        break
+                    time.sleep(1.0)
 
-        logger.error(f"Gemini Vision OCR extraction failed completely: {last_error}")
+        logger.error(f"Gemini Vision OCR extraction failed completely on all candidate models: {last_error}")
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Could not read the document, please try again with a clearer photo or PDF.",
