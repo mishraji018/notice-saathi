@@ -6,13 +6,13 @@ from fastapi import APIRouter, UploadFile, File, Form, Query, HTTPException, sta
 from fastapi.responses import Response, StreamingResponse, JSONResponse
 
 try:
-    from backend.models.notice import AnalyzeResponse, NoticeData, ExplanationPoint, ReexplainRequest
+    from backend.models.notice import AnalyzeResponse, NoticeData, ReexplainRequest
     from backend.services.ocr_service import ocr_service
     from backend.services.agent_service import agent_service
     from backend.services.voice_service import voice_service
     from backend.services.reminder_service import reminder_service
 except ModuleNotFoundError:
-    from models.notice import AnalyzeResponse, NoticeData, ExplanationPoint, ReexplainRequest
+    from models.notice import AnalyzeResponse, NoticeData, ReexplainRequest
     from services.ocr_service import ocr_service
     from services.agent_service import agent_service
     from services.voice_service import voice_service
@@ -37,9 +37,9 @@ async def analyze_notice(
     """
     Analyze uploaded notice document with full error resilience and execution logging.
     1. Validates file format and size
-    2. Runs OCR (Google Cloud Vision)
+    2. Runs OCR (Gemini Vision with local fallback)
     3. Guards against blurry/empty text (<20 characters)
-    4. Runs AI agent reasoning (Anthropic Claude with 30s timeout)
+    4. Runs AI agent reasoning (Groq / Gemini / Claude fallback with 30s timeout)
     Always returns structured JSON matching AnalyzeResponse, never raw 500 HTML.
     """
     start_time = time.perf_counter()

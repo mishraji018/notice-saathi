@@ -12,13 +12,18 @@ class Helpline(BaseModel):
     number: Optional[str] = None
 
 
+DocumentCategory = Literal["government_notice", "government_document_other", "not_government"]
+
+
 class NoticeData(BaseModel):
+    document_category: DocumentCategory = "government_notice"
     notice_type: Optional[str] = None
+    detected_type: Optional[str] = None
     authority: Optional[str] = None
     deadline: Optional[str] = None
     amount: Optional[str] = None
     action_required: Optional[str] = None
-    urgency_level: Literal["high", "medium", "low"] = "medium"
+    urgency_level: Optional[Literal["high", "medium", "low"]] = None
     scam_likelihood: Literal["high", "medium", "low", "none"] = "none"
     scam_reasons: List[str] = Field(default_factory=list)
     explanation_points: List[ExplanationPoint] = Field(default_factory=list)

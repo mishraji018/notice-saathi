@@ -14,14 +14,58 @@ Upload a government notice (photo or PDF) and get it explained in plain English 
 - Full English/Hindi UI; switching language re-explains the notice without re-uploading
 - Robust error handling: network offline detection, request timeouts (35s), and friendly failure states
 
-## Run locally
+## Quick Start
+
+### 1. Backend Setup (FastAPI)
 
 ```sh
+cd backend
+python -m venv venv
+
+# Windows (PowerShell)
+.\venv\Scripts\Activate.ps1
+# macOS / Linux
+# source venv/bin/activate
+
+pip install -r requirements.txt
+cp .env.example .env
+# Edit .env with your GEMINI_API_KEY and GROQ_API_KEY
+
+uvicorn main:app --reload --port 8000
+```
+
+The backend API will run on `http://localhost:8000` (docs available at `http://localhost:8000/docs`).
+
+### 2. Frontend Setup (TanStack Start)
+
+```sh
+# In repository root
 npm i
 npm run dev
 ```
 
-The app runs on `http://localhost:5173` (or the port Vite prints).
+The web app will run on `http://localhost:5173` (or the port Vite prints).
+
+## Environment Variables
+
+### Backend (`backend/.env`)
+
+| Variable | Description | Default / Example |
+|---|---|---|
+| `GEMINI_API_KEY` | Required for Gemini Vision OCR | `AIzaSy...` |
+| `GEMINI_MODEL` | Gemini OCR model name | `gemini-2.5-flash` |
+| `GROQ_API_KEY` | Primary LLM provider for analysis | `gsk_...` |
+| `GROQ_MODEL` | Primary model on Groq | `openai/gpt-oss-120b` |
+| `ANTHROPIC_API_KEY` | Optional fallback LLM provider | `sk-ant-...` |
+| `PORT` | API server port | `8000` |
+| `ALLOWED_ORIGINS` | Comma-separated CORS allowed origins | `http://localhost:3000,http://localhost:5173` |
+
+### Frontend (`.env.local`)
+
+| Variable | Description | Default |
+|---|---|---|
+| `VITE_API_BASE_URL` | Backend URL for client-side API calls | `http://localhost:8000` |
+| `NEXT_PUBLIC_API_BASE_URL` | Fallback backend URL for server-side calls | `http://localhost:8000` |
 
 ## Backend API contract
 

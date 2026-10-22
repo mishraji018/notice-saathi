@@ -1,215 +1,247 @@
-import { useState } from "react";
-import type { Language, NoticeAnalysis } from "@/lib/types";
-import { t } from "@/lib/strings";
-import { downloadReminder, speakText, stopSpeaking } from "@/lib/api";
+import type { NoticeAnalysis } from "@/lib/types";
 import { UrgencyBadge } from "@/components/UrgencyBadge";
 
 interface ResultsViewProps {
   analysis: NoticeAnalysis;
-  language: Language;
   onStartOver: () => void;
 }
 
-function Icon({ path, className }: { path: string; className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className ?? "h-4 w-4"}
-      aria-hidden="true"
-    >
-      <path d={path} />
-    </svg>
-  );
-}
+export function ResultsView({ analysis, onStartOver }: ResultsViewProps) {
+  const category = analysis.document_category || "government_notice";
 
-const ICONS = {
-  speaker: "M11 5 6 9H2v6h4l5 4V5zm6 3a4 4 0 0 1 0 8m2.5-11a8 8 0 0 1 0 14",
-  calendar: "M8 2v4m8-4v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z",
-  phone: "M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 2 .7 2.9a2 2 0 0 1-.4 2.1L8.1 10a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.9.6 2.9.7a2 2 0 0 1 1.6 1.9z",
-};
-
-export function ResultsView({ analysis, language, onStartOver }: ResultsViewProps) {
-  const [visibleSource, setVisibleSource] = useState<number | null>(null);
-  const [speaking, setSpeaking] = useState(false);
-
-  const facts: Array<{ label: string; value: string }> = [];
-  if (analysis.authority) facts.push({ label: t(language, "authority"), value: analysis.authority });
-  if (analysis.deadline) facts.push({ label: t(language, "deadline"), value: analysis.deadline });
-  if (analysis.amount) facts.push({ label: t(language, "amount"), value: analysis.amount });
-
-  const scammy = analysis.scam_likelihood === "high" || analysis.scam_likelihood === "medium";
-
-  const handleListen = async () => {
-    if (speaking) {
-      stopSpeaking();
-      setSpeaking(false);
-      return;
-    }
-    const points = analysis.explanation_points ?? [];
-    const text = points.map((point) => point.text).join(" ");
-    if (!text.trim()) return;
-
-    setSpeaking(true);
-    await speakText(text, language);
-    // The built-in speech cannot report completion reliably; reset after a while.
-    window.setTimeout(() => setSpeaking(false), Math.max(8, Math.min(90, text.length / 12)) * 1000);
-  };
-
-  return (
-    <div className="space-y-4">
-      {/* Header card */}
-      <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              {t(language, "noticeType")}
-            </p>
-            <h2 className="mt-1 font-display text-2xl font-bold leading-snug text-foreground">
-              {analysis.notice_type || (language === "hi" ? "नोटिस विश्लेषण" : "Notice Analysis")}
-            </h2>
+  // -------------------------------------------------------------
+  // Case 1: "not_government"
+  // -------------------------------------------------------------
+  if (category === "not_government") {
+    const docType = analysis.detected_type || "non-government document";
+    return (
+      <div className="space-y-6">
+        {/* Big clear heading banner */}
+        <div className="rounded-2xl border border-border bg-card p-6 sm:p-8 text-center shadow-sm">
+          <div className="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-full bg-secondary text-2xl" aria-hidden="true">
+            📄
           </div>
-          <UrgencyBadge level={analysis.urgency_level || "medium"} language={language} />
+          <h2 className="font-display text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+            This does not look like a government document
+          </h2>
+          <p className="mt-2 text-base text-muted-foreground">
+            It looks like a <span className="font-semibold text-foreground">{docType.toLowerCase()}</span>.
+          </p>
+        </div>
+
+        {/* Footer & Upload Another Notice */}
+        <div className="pt-2 text-center space-y-3">
+          <p className="text-xs text-muted-foreground">
+            This explanation is for informational purposes only and is not legal advice.
+          </p>
+          <div>
+            <button
+              type="button"
+              id="upload-another-button"
+              onClick={onStartOver}
+              className="inline-flex items-center justify-center rounded-full bg-primary px-7 py-3 font-display text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 transition-colors"
+            >
+              Upload another notice
+            </button>
+          </div>
         </div>
       </div>
+    );
+  }
 
-      {/* Scam warning */}
-      {scammy && (
-        <div className="rounded-2xl border border-destructive/30 bg-destructive/10 p-5" role="alert">
-          <h3 className="flex items-center gap-2 font-display text-base font-bold text-destructive">
-            <span aria-hidden="true">⚠</span> {t(language, "scamWarningTitle")}
-          </h3>
-          {analysis.scam_reasons && analysis.scam_reasons.length > 0 && (
-            <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-destructive">
-              {analysis.scam_reasons.map((reason, index) => (
-                <li key={index}>{reason}</li>
-              ))}
-            </ul>
+  // -------------------------------------------------------------
+  // Case 2: "government_document_other"
+  // -------------------------------------------------------------
+  if (category === "government_document_other") {
+    return (
+      <div className="space-y-5">
+        {/* Large neutral banner */}
+        <div className="rounded-2xl border border-border bg-secondary/80 p-5 text-center shadow-sm">
+          <p className="font-display text-base sm:text-lg font-bold text-foreground">
+            This is a government document, but not a notice. No action is required.
+          </p>
+        </div>
+
+        {/* Document Title Card */}
+        <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Document
+          </p>
+          <h2 className="mt-1 font-display text-2xl font-bold leading-snug text-foreground">
+            {analysis.notice_type || "Government Document"}
+          </h2>
+          {analysis.authority && (
+            <p className="mt-1 text-sm text-muted-foreground font-medium">
+              Issued by: <span className="text-foreground">{analysis.authority}</span>
+            </p>
           )}
         </div>
-      )}
 
-      {/* Key facts */}
-      {facts.length > 0 && (
-        <div className="grid gap-3 sm:grid-cols-3">
-          {facts.map((fact) => (
-            <div key={fact.label} className="rounded-2xl border border-border bg-card p-4 shadow-sm">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{fact.label}</p>
-              <p className="mt-1 text-sm font-semibold text-foreground">{fact.value}</p>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* What this means */}
-      <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
-        <h3 className="font-display text-lg font-bold text-foreground">{t(language, "whatItMeans")}</h3>
-        {analysis.explanation_points && analysis.explanation_points.length > 0 ? (
-          <ul className="mt-3 space-y-3">
-            {analysis.explanation_points.map((point, index) => {
-              const open = visibleSource === index;
-              return (
-                <li key={index} className="flex gap-3">
-                  <span
-                    className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-primary/10 font-display text-xs font-bold text-primary"
-                    aria-hidden="true"
-                  >
-                    {index + 1}
-                  </span>
-                  <div className="min-w-0">
-                    <p className="text-sm leading-relaxed text-foreground">{point.text}</p>
-                    {point.source_sentence && (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => setVisibleSource(open ? null : index)}
-                          className="mt-1 text-xs font-semibold text-primary hover:underline"
-                        >
-                          {open ? t(language, "hideSource") : t(language, "viewSource")}
-                        </button>
-                        {open && (
-                          <blockquote className="mt-1.5 border-l-2 border-primary/40 pl-3 text-sm italic text-muted-foreground">
-                            “{point.source_sentence}”
-                          </blockquote>
-                        )}
-                      </>
-                    )}
-                  </div>
+        {/* What this document says card */}
+        <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+          <h3 className="font-display text-lg font-bold text-foreground">
+            What this document says
+          </h3>
+          {analysis.explanation_points && analysis.explanation_points.length > 0 ? (
+            <ul className="mt-3 space-y-2.5">
+              {analysis.explanation_points.map((point, index) => (
+                <li key={index} className="flex items-start gap-3">
+                  <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-primary" aria-hidden="true" />
+                  <p className="text-sm leading-relaxed text-foreground">{point.text}</p>
                 </li>
-              );
-            })}
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-2 text-sm text-muted-foreground">
+              This document is an official government record or acknowledgement.
+            </p>
+          )}
+        </div>
+
+        {/* Keep safe line */}
+        <div className="rounded-2xl border border-border bg-card p-5 text-sm text-foreground shadow-sm flex items-center gap-3">
+          <span className="text-xl" aria-hidden="true">📁</span>
+          <p className="leading-relaxed">
+            <span className="font-semibold">Keep it safe:</span> Please store this document for your records. No immediate compliance action is required.
+          </p>
+        </div>
+
+        {/* Footer & Upload Another Notice */}
+        <div className="pt-2 text-center space-y-3">
+          <p className="text-xs text-muted-foreground">
+            This explanation is for informational purposes only and is not legal advice.
+          </p>
+          <div>
+            <button
+              type="button"
+              id="upload-another-button"
+              onClick={onStartOver}
+              className="inline-flex items-center justify-center rounded-full bg-primary px-6 py-2.5 font-display text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 transition-colors"
+            >
+              Upload another notice
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // -------------------------------------------------------------
+  // Case 3: "government_notice" (Full 5 cards with urgency badge)
+  // -------------------------------------------------------------
+  const rawActions = analysis.action_required || "No immediate action specified.";
+  const actionItems = rawActions
+    .split(/\n+|\d+\.\s+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+
+  return (
+    <div className="space-y-5">
+      {/* 1. Notice Type Card with Urgency Badge */}
+      <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Notice Type
+            </p>
+            <h2 className="mt-1 font-display text-2xl font-bold leading-snug text-foreground">
+              {analysis.notice_type || "Government Notice"}
+            </h2>
+            {analysis.authority && (
+              <p className="mt-1 text-sm text-muted-foreground font-medium">
+                Issued by: <span className="text-foreground">{analysis.authority}</span>
+              </p>
+            )}
+          </div>
+          {analysis.urgency_level && (
+            <UrgencyBadge level={analysis.urgency_level} language="en" />
+          )}
+        </div>
+      </div>
+
+      {/* 2. What this notice means (Kya kehta hai) */}
+      <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+        <h3 className="font-display text-lg font-bold text-foreground">
+          What this notice says
+        </h3>
+        {analysis.explanation_points && analysis.explanation_points.length > 0 ? (
+          <ul className="mt-3 space-y-2.5">
+            {analysis.explanation_points.map((point, index) => (
+              <li key={index} className="flex items-start gap-3">
+                <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-primary" aria-hidden="true" />
+                <p className="text-sm leading-relaxed text-foreground">{point.text}</p>
+              </li>
+            ))}
           </ul>
         ) : (
-          <p className="mt-3 text-sm text-muted-foreground">{t(language, "noExplanationPoints")}</p>
-        )}
-        {(analysis.explanation_points?.length ?? 0) > 0 && (
-          <button
-            type="button"
-            onClick={handleListen}
-            className="mt-5 inline-flex items-center gap-2 rounded-full border border-primary/40 bg-primary/10 px-4 py-2 text-sm font-semibold text-primary transition-colors hover:bg-primary/20"
-          >
-            <Icon path={ICONS.speaker} />
-            {speaking ? t(language, "stopListening") : t(language, "listen")}
-          </button>
-        )}
-      </div>
-
-      {/* What you need to do */}
-      <div className="rounded-2xl border border-primary/30 bg-primary/5 p-6 shadow-sm">
-        <h3 className="font-display text-lg font-bold text-foreground">{t(language, "whatToDo")}</h3>
-        <p className="mt-2 text-sm leading-relaxed text-foreground">
-          {analysis.action_required || (language === "hi" ? "कोई तत्काल कार्रवाई निर्दिष्ट नहीं है।" : "No immediate action specified.")}
-        </p>
-        {analysis.deadline && (
-          <button
-            type="button"
-            onClick={() => downloadReminder(analysis.notice_type, analysis.deadline as string, language)}
-            className="mt-4 inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2.5 font-display text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
-          >
-            <Icon path={ICONS.calendar} />
-            {t(language, "addReminder")}
-          </button>
-        )}
-      </div>
-
-      {/* Helpline */}
-      {analysis.helpline && analysis.helpline.number && (
-        <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            {t(language, "helpline")}
+          <p className="mt-2 text-sm text-muted-foreground">
+            No specific explanation points available for this notice.
           </p>
-          <a
-            href={`tel:${analysis.helpline.number.replace(/[^+\d]/g, "")}`}
-            className="mt-1 inline-flex items-center gap-2 font-display text-base font-bold text-primary hover:underline"
-          >
-            <Icon path={ICONS.phone} />
-            {analysis.helpline.number}
-            {analysis.helpline.name && (
-              <span className="text-sm font-medium text-muted-foreground">({analysis.helpline.name})</span>
-            )}
-          </a>
+        )}
+      </div>
+
+      {/* 3 & 4. Deadline and Amount Cards */}
+      <div className={`grid gap-4 ${analysis.amount ? "sm:grid-cols-2" : "grid-cols-1"}`}>
+        {/* Deadline Card */}
+        <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Deadline
+          </p>
+          <p className="mt-1.5 font-display text-lg font-bold text-foreground">
+            {analysis.deadline || "No specific deadline mentioned"}
+          </p>
         </div>
-      )}
 
-      {/* Disclaimer */}
-      {analysis.is_high_risk && (
-        <p className="rounded-2xl border border-border bg-secondary p-4 text-sm leading-relaxed text-muted-foreground">
-          {t(language, "notLegalAdvice")}
+        {/* Amount Card (Only shown if amount exists) */}
+        {analysis.amount && (
+          <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Amount Involved
+            </p>
+            <p className="mt-1.5 font-display text-lg font-bold text-foreground">
+              {analysis.amount}
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* 5. What you need to do (Kya karna hai) */}
+      <div className="rounded-2xl border border-primary/25 bg-primary/5 p-6 shadow-sm">
+        <h3 className="font-display text-lg font-bold text-foreground">
+          What you need to do
+        </h3>
+        {actionItems.length > 1 ? (
+          <ol className="mt-3 space-y-2">
+            {actionItems.map((step, idx) => (
+              <li key={idx} className="flex items-start gap-2.5 text-sm text-foreground">
+                <span className="font-semibold text-primary">{idx + 1}.</span>
+                <span className="leading-relaxed">{step}</span>
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <p className="mt-2 text-sm leading-relaxed text-foreground">
+            {analysis.action_required || "Review the notice details carefully and maintain a copy for your records."}
+          </p>
+        )}
+      </div>
+
+      {/* Footer Disclaimer & Upload Another Notice */}
+      <div className="pt-2 text-center space-y-3">
+        <p className="text-xs text-muted-foreground">
+          This explanation is for informational purposes only and is not legal advice.
         </p>
-      )}
 
-      <div className="text-center">
-        <button
-          type="button"
-          onClick={onStartOver}
-          className="text-sm font-semibold text-primary hover:underline"
-        >
-          {t(language, "startOver")}
-        </button>
+        <div>
+          <button
+            type="button"
+            id="upload-another-button"
+            onClick={onStartOver}
+            className="inline-flex items-center justify-center rounded-full bg-primary px-6 py-2.5 font-display text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 transition-colors"
+          >
+            Upload another notice
+          </button>
+        </div>
       </div>
     </div>
   );

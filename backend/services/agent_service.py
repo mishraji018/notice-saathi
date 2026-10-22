@@ -19,78 +19,92 @@ except ModuleNotFoundError:
     from models.notice import NoticeData, ExplanationPoint, Helpline
 
 SYSTEM_PROMPT = """You are an expert Indian legal document analyst and consumer protection AI for "Notice Saathi".
-Your mission is to analyze raw OCR text from official government notices, court summons, utility bills, tax demands, or potential scam documents, and explain them in plain language that an everyday citizen can understand.
+Your mission is to analyze raw OCR text and classify the document into one of three distinct categories, extract key details, and explain it clearly in plain language.
 
 You must follow these rules strictly:
 1. OCR Robustness: The raw text comes from OCR and may have noise, missing punctuation, typos, or irregular line breaks. Reconstruct meaning from context.
-2. Classification: Accurately identify the notice_type (e.g. "Income Tax Notice — Section 142(1)", "Electricity Disconnection Notice", "Court Summons", "Traffic Challan", "Bank Loan Demand", "GST Notice", "Municipal Property Tax Demand").
-3. Extraction:
-   - authority: Full name of the issuing department, government body, or organization.
-   - deadline: The compliance or payment deadline date/time limit if specified (e.g. "15 November 2026"), otherwise null.
-   - amount: Total amount demanded, penalty, or fee including currency (e.g. "₹48,200"), otherwise null.
-   - action_required: Clear, direct statement of what the recipient must do next to resolve this notice.
-4. Urgency Assessment:
-   - "high": Immediate consequence threatened (e.g., legal arrest, court warrant, power disconnection, bank freeze, heavy recurring penalty, or deadline within 7 days).
-   - "medium": Formal compliance required, but standard response time is provided (e.g., 15-30 days to file response).
-   - "low": Purely informational, acknowledgement, or routine record.
-5. Scam Likelihood Assessment:
-   - Check for scam indicators:
-     * Demands payment to personal UPI IDs (e.g. ending in @okaxis, @ybl, @paytm) or personal savings accounts rather than official government portals or challans.
-     * Unusually threatening, unprofessional language ("Police will arrest you in 2 hours").
-     * Absence of mandatory official identifiers (DIN, PAN, Notice Reference Number, official seal).
-     * Suspicious contact details (e.g. @gmail.com or @yahoo.com for government officials).
-     * Extreme artificial urgency demanding immediate payment through gift cards or transfers.
-   - Set scam_likelihood to "high", "medium", "low", or "none".
-   - If not "none", list the concrete scam_reasons explaining why.
-6. Simplified Explanation Points (Class 6 Reading Level):
-   - Provide 3 to 5 clear, jargon-free bullet points explaining: (a) What this notice is about, (b) Why you received it, and (c) What will happen if you do or don't respond.
-   - For EACH point, you MUST provide 'source_sentence', which is an EXACT, verbatim substring from raw_text supporting that point.
-7. Language Support:
-   - If target language is "hi", write 'notice_type', 'action_required', and all 'explanation_points.text' in clear Hindi (Devanagari script). Keep 'source_sentence' in its original language as it appears in raw_text.
-   - If target language is "en", write in simple English.
-8. Official Helpline:
-   - If this is a standard Indian notice type with a verified public helpline, provide it (e.g. Income Tax: {"name": "Aaykar Sampark Kendra", "number": "1800-180-1961"}, National Consumer Helpline: {"name": "NCH", "number": "1915"}, Cyber Crime: {"name": "Cyber Crime Helpline", "number": "1930"}). Otherwise null.
-9. Risk Flag:
-   - Set is_high_risk to true if urgency_level is "high" OR scam_likelihood is "high" or "medium"; otherwise false.
-10. Non-Notice Documents: If the document is clearly NOT an official notice, government order, utility bill, summons, or legal/financial communication (e.g., a personal selfie, a meme, receipt, or random note):
-   - Set notice_type to "Unrecognized Document" (or "अपरिचित दस्तावेज़" in Hindi).
-   - Set urgency_level to "low".
-   - Set scam_likelihood to "none".
-   - Set action_required and explanation_points to politely inform the user that this does not appear to be an official notice.
+
+2. Document Categorization (document_category):
+   Classify the document into EXACTLY one of these three categories:
+   - "government_notice": Official notices, court summons, tax demands (Income Tax, GST, Municipal), electricity/utility disconnection warnings, traffic challans, arrest/bailable warrants, or regulatory orders issued by government, courts, police, or statutory regulators that require compliance or have a deadline.
+   - "government_document_other": Documents issued by or related to the government that are NOT notices and do NOT demand urgent action (e.g., scholarship application/registration slips, tax payment receipts, Aadhaar/PAN acknowledgement receipts, birth/caste certificates, scheme enrollment letters, government job registration slips).
+   - "not_government": Non-government documents such as technical tutorials (e.g., Apache Spark, Hadoop, programming guides), academic assignments, lab manuals, private bills, corporate invoices, chat screenshots, personal photos, or articles.
+
+3. Naming and Labels:
+   - NEVER use the label "Unrecognized Document".
+   - If document_category is "government_notice": Set 'notice_type' to a clear, specific name (e.g. "Income Tax Notice — Section 142(1)", "GST Demand Notice", "Traffic E-Challan").
+   - If document_category is "government_document_other": Set 'notice_type' to a meaningful document title (e.g. "Scholarship Registration Slip", "Aadhaar Card Acknowledgement", "Property Tax Receipt").
+   - If document_category is "not_government": 'notice_type' MUST BE null. Instead, set 'detected_type' to what kind of document it is (e.g. "Technical Tutorial", "Academic Lab Guide", "Private Company Bill", "Personal Chat Screenshot").
+
+4. Category-Specific Fields:
+   - For "government_notice":
+     * authority: Official issuing department or organization.
+     * deadline: Compliance date if stated (e.g. "18 November 2026"), otherwise null.
+     * amount: Total demand or penalty amount (e.g. "₹54,300"), otherwise null.
+     * action_required: Clear directive of what the citizen must do next.
+     * urgency_level: "high", "medium", or "low".
+   - For "government_document_other":
+     * authority: Issuing department or body if known, else null.
+     * deadline: Must be null.
+     * amount: Must be null.
+     * action_required: "Keep this document safe for your records. No action or reply is required."
+     * urgency_level: Must be null.
+   - For "not_government":
+     * notice_type: Must be null.
+     * deadline: Must be null.
+     * amount: Must be null.
+     * urgency_level: Must be null.
+     * action_required: null.
+     * explanation_points: 1-2 points explaining what this document appears to be.
+
+5. Simplified Explanation Points:
+   - Provide 2 to 4 clear, jargon-free bullet points explaining the document.
+
+6. Scam Likelihood Assessment:
+   - Check for scam indicators. If not_government, set scam_likelihood to "none".
 """
 
 ANALYSIS_SCHEMA = {
     "type": "object",
     "properties": {
-        "notice_type": {
+        "document_category": {
             "type": "string",
-            "description": "Classified type of notice in target language (e.g. 'Income Tax Notice — Section 142(1)').",
+            "enum": ["government_notice", "government_document_other", "not_government"],
+            "description": "Classification into 3 categories: government_notice, government_document_other, or not_government.",
+        },
+        "notice_type": {
+            "type": ["string", "null"],
+            "description": "Specific notice or document name for government items. MUST be null if document_category is not_government.",
+        },
+        "detected_type": {
+            "type": ["string", "null"],
+            "description": "Descriptive type of document, especially when not_government (e.g. 'Technical Tutorial', 'Academic Lab Guide').",
         },
         "authority": {
             "type": ["string", "null"],
-            "description": "Full official issuing department or authority name, or null if unknown.",
+            "description": "Full official issuing department or authority name, or null.",
         },
         "deadline": {
             "type": ["string", "null"],
-            "description": "Explicit due date or time limit for compliance (e.g. '15 November 2026'), or null.",
+            "description": "Explicit due date for compliance, or null.",
         },
         "amount": {
             "type": ["string", "null"],
-            "description": "Total monetary amount demanded or penalty with currency symbol (e.g. '₹48,200'), or null.",
+            "description": "Total monetary amount demanded, or null.",
         },
         "action_required": {
-            "type": "string",
-            "description": "Concise, plain-language directive stating exactly what the citizen must do.",
+            "type": ["string", "null"],
+            "description": "Concise plain-language directive stating what the citizen must do, or null.",
         },
         "urgency_level": {
-            "type": "string",
-            "enum": ["high", "medium", "low"],
-            "description": "Level of time-sensitivity and severity of consequences.",
+            "type": ["string", "null"],
+            "enum": ["high", "medium", "low", None],
+            "description": "Urgency level for government_notice ('high', 'medium', 'low'), or null for non-notices.",
         },
         "scam_likelihood": {
             "type": "string",
             "enum": ["high", "medium", "low", "none"],
-            "description": "Assessed likelihood of the notice being fraudulent or a phishing scam.",
+            "description": "Assessed likelihood of fraudulent notice.",
         },
         "scam_reasons": {
             "type": "array",
@@ -104,16 +118,16 @@ ANALYSIS_SCHEMA = {
                 "properties": {
                     "text": {
                         "type": "string",
-                        "description": "Simple 6th-grade explanation point in target language.",
+                        "description": "Simple explanation point.",
                     },
                     "source_sentence": {
                         "type": ["string", "null"],
-                        "description": "Exact verbatim substring from raw_text supporting this point.",
+                        "description": "Exact verbatim substring from raw_text.",
                     },
                 },
-                "required": ["text", "source_sentence"],
+                "required": ["text"],
             },
-            "description": "3 to 5 simple, accessible explanatory bullet points.",
+            "description": "Simple explanatory bullet points.",
         },
         "helpline": {
             "type": ["object", "null"],
@@ -122,7 +136,7 @@ ANALYSIS_SCHEMA = {
                 "number": {"type": "string"},
             },
             "required": ["name", "number"],
-            "description": "Verified Indian helpline if known, else null.",
+            "description": "Verified helpline if known, else null.",
         },
         "is_high_risk": {
             "type": "boolean",
@@ -130,15 +144,12 @@ ANALYSIS_SCHEMA = {
         },
     },
     "required": [
-        "notice_type",
-        "action_required",
-        "urgency_level",
-        "scam_likelihood",
-        "scam_reasons",
+        "document_category",
         "explanation_points",
         "is_high_risk",
     ],
 }
+
 
 
 class AgentService:
@@ -283,16 +294,7 @@ class AgentService:
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail="AI model did not return structured analysis data.",
             )
-
-        tool_call_input["raw_text"] = raw_text
-
-        try:
-            return NoticeData(**tool_call_input)
-        except Exception as e:
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"Failed to parse structured notice data from AI output: {str(e)}",
-            )
+        return self._normalize_category_fields(tool_call_input, raw_text)
 
     async def _call_anthropic(self, user_prompt: str, raw_text: str) -> NoticeData:
         import anthropic
@@ -363,11 +365,36 @@ class AgentService:
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail="AI model did not return structured analysis data.",
             )
+        return self._normalize_category_fields(tool_call_input, raw_text)
 
-        tool_call_input["raw_text"] = raw_text
+    def _normalize_category_fields(self, data: Dict[str, Any], raw_text: str) -> NoticeData:
+        data["raw_text"] = raw_text
+        category = data.get("document_category", "government_notice")
+        if category not in ("government_notice", "government_document_other", "not_government"):
+            category = "government_notice"
+            data["document_category"] = category
+
+        # Strictly enforce field rules by category
+        if category == "not_government":
+            data["notice_type"] = None
+            data["urgency_level"] = None
+            data["deadline"] = None
+            data["amount"] = None
+            data["scam_likelihood"] = "none"
+            data["scam_reasons"] = []
+            if not data.get("detected_type"):
+                data["detected_type"] = "Non-Government Document"
+        elif category == "government_document_other":
+            data["urgency_level"] = None
+            data["deadline"] = None
+            data["amount"] = None
+            data["scam_likelihood"] = "none"
+            data["scam_reasons"] = []
+            if not data.get("action_required"):
+                data["action_required"] = "Keep this document safe for your records. No immediate compliance action is required."
 
         try:
-            return NoticeData(**tool_call_input)
+            return NoticeData(**data)
         except Exception as e:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,

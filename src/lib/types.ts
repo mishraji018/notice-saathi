@@ -7,13 +7,17 @@ export interface ExplanationPoint {
   source_sentence: string;
 }
 
+export type DocumentCategory = "government_notice" | "government_document_other" | "not_government";
+
 export interface NoticeAnalysis {
-  notice_type: string;
+  document_category?: DocumentCategory;
+  notice_type: string | null;
+  detected_type?: string | null;
   authority: string | null;
   deadline: string | null;
   amount: string | null;
-  action_required: string;
-  urgency_level: UrgencyLevel;
+  action_required: string | null;
+  urgency_level: UrgencyLevel | null;
   scam_likelihood: ScamLikelihood;
   scam_reasons: string[];
   explanation_points: ExplanationPoint[];
@@ -21,6 +25,7 @@ export interface NoticeAnalysis {
   helpline: { name: string; number: string } | null;
   is_high_risk: boolean;
 }
+
 
 export interface AnalyzeResponse {
   status: "success" | "error";

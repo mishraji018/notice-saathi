@@ -1,41 +1,47 @@
 import { useRef, useState } from "react";
-import type { Language } from "@/lib/types";
-import { t } from "@/lib/strings";
-
 const MAX_SIZE_BYTES = 10 * 1024 * 1024;
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "application/pdf"];
 
 interface UploadCardProps {
-  language: Language;
   onFileSelected: (file: File) => void;
 }
 
-export function UploadCard({ language, onFileSelected }: UploadCardProps) {
+export function UploadCard({ onFileSelected }: UploadCardProps) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const validateAndSubmit = (file: File | undefined) => {
+  const handleFileChange = (file: File | undefined) => {
     if (!file) return;
     const typeOk = ALLOWED_TYPES.includes(file.type) || /\.(jpe?g|png|pdf)$/i.test(file.name);
     if (!typeOk) {
-      setError(t(language, "fileWrongType"));
+      setError("Only JPG, PNG and PDF documents are supported.");
       return;
     }
     if (file.size > MAX_SIZE_BYTES) {
-      setError(t(language, "fileTooLarge"));
+      setError("File is larger than 10 MB. Please choose a smaller file.");
       return;
     }
     setError(null);
-    onFileSelected(file);
+    setSelectedFile(file);
+  };
+
+  const handleAnalyzeClick = () => {
+    if (!selectedFile) {
+      inputRef.current?.click();
+      return;
+    }
+    onFileSelected(selectedFile);
   };
 
   return (
     <div className="rounded-2xl border border-border bg-card p-6 shadow-sm sm:p-8">
+      {/* Drop / Selection Zone */}
       <div
         role="button"
         tabIndex={0}
-        aria-label={t(language, "uploadTitle")}
+        aria-label="Upload notice"
         onClick={() => inputRef.current?.click()}
         onKeyDown={(event) => {
           if (event.key === "Enter" || event.key === " ") inputRef.current?.click();
@@ -48,10 +54,10 @@ export function UploadCard({ language, onFileSelected }: UploadCardProps) {
         onDrop={(event) => {
           event.preventDefault();
           setDragging(false);
-          validateAndSubmit(event.dataTransfer.files?.[0]);
+          handleFileChange(event.dataTransfer.files?.[0]);
         }}
         className={
-          "flex cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-4 py-10 text-center transition-colors " +
+          "flex cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-4 py-8 text-center transition-colors " +
           (dragging ? "border-primary bg-accent" : "border-border bg-secondary/50 hover:border-primary/60")
         }
       >
@@ -70,19 +76,37 @@ export function UploadCard({ language, onFileSelected }: UploadCardProps) {
           <path d="M12 18v-6" />
           <path d="m9 15 3 3 3-3" />
         </svg>
-        <p className="font-display text-lg font-semibold text-foreground">{t(language, "uploadTitle")}</p>
-        <p className="max-w-xs text-sm text-muted-foreground">{t(language, "uploadHint")}</p>
-        <span className="mt-2 inline-flex items-center rounded-full bg-primary px-6 py-2.5 font-display text-base font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90">
-          {t(language, "uploadButton")}
-        </span>
-        <p className="text-xs text-muted-foreground">{t(language, "dropHint")}</p>
+
+        <div>
+          <p className="font-display text-lg font-semibold text-foreground">
+            {selectedFile ? selectedFile.name : "Choose Notice Document"}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {selectedFile
+              ? `${(selectedFile.size / 1024).toFixed(1)} KB — Click to change`
+              : "JPG, PNG or PDF (up to 10 MB)"}
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            inputRef.current?.click();
+          }}
+          className="inline-flex items-center rounded-full border border-primary/30 bg-primary/10 px-5 py-2 font-display text-sm font-semibold text-primary transition-colors hover:bg-primary/20"
+        >
+          {selectedFile ? "Change File" : "Select File"}
+        </button>
+
         <input
           ref={inputRef}
           type="file"
+          id="notice-file-input"
           accept=".jpg,.jpeg,.png,.pdf"
           className="hidden"
           onChange={(event) => {
-            validateAndSubmit(event.target.files?.[0]);
+            handleFileChange(event.target.files?.[0]);
             event.target.value = "";
           }}
         />
@@ -93,6 +117,18 @@ export function UploadCard({ language, onFileSelected }: UploadCardProps) {
           {error}
         </p>
       )}
+
+      {/* Prominent Analyze Button */}
+      <div className="mt-5 flex justify-center">
+        <button
+          type="button"
+          id="analyze-button"
+          onClick={handleAnalyzeClick}
+          className="w-full sm:w-auto inline-flex items-center justify-center rounded-full bg-primary px-8 py-3 font-display text-base font-semibold text-primary-foreground shadow-sm transition-all hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
+        >
+          Analyze Notice
+        </button>
+      </div>
     </div>
   );
 }

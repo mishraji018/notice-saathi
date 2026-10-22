@@ -15,6 +15,9 @@ dist-ssr
 .tanstack/**
 .nitro
 *.local
+service_account*.json
+*credentials*.json
+gcp*.json
 
 # Wrangler / Cloudflare
 .wrangler/

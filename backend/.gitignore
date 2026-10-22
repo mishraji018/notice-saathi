@@ -9,8 +9,12 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-# Environment variables
+# Environment variables & secrets
 .env
+*.json
+!package.json
+!tsconfig*.json
+service_account*.json
 
 # Testing / tooling
 .pytest_cache/
