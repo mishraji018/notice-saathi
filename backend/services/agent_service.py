@@ -26,9 +26,13 @@ You must follow these rules strictly:
 
 2. Document Categorization (document_category):
    Classify the document into EXACTLY one of these three categories:
-   - "government_notice": Official notices, court summons, tax demands (Income Tax, GST, Municipal), electricity/utility disconnection warnings, traffic challans, arrest/bailable warrants, or regulatory orders issued by government, courts, police, or statutory regulators that require compliance or have a deadline.
-   - "government_document_other": Documents issued by or related to the government that are NOT notices and do NOT demand urgent action (e.g., scholarship application/registration slips, tax payment receipts, Aadhaar/PAN acknowledgement receipts, birth/caste certificates, scheme enrollment letters, government job registration slips).
-   - "not_government": Non-government documents such as technical tutorials (e.g., Apache Spark, Hadoop, programming guides), academic assignments, lab manuals, private bills, corporate invoices, chat screenshots, personal photos, or articles.
+   - "government_notice": Official notices, court summons, tax demands (Income Tax, GST, Municipal), electricity/utility disconnection warnings, traffic challans, arrest/bailable warrants, or regulatory orders issued by government, courts, police, or statutory regulators.
+     CRITICAL RULE FOR SAMPLES / DUMMY / FICTIONAL NOTICES:
+     Users frequently test this platform with sample, mock, draft, template, practice, educational, or fictional notices (such as a sample GST show cause notice, dummy Income Tax letter, or mock summons with placeholder names/amounts).
+     You MUST ALWAYS classify ANY sample, mock, draft, template, or fictional government notice as "government_notice".
+     Analyze and explain its legal sections, demands, deadlines, and required actions just like an official notice. NEVER reject or classify sample/fictional notices as "not_government".
+   - "government_document_other": Documents issued by or related to the government that are NOT notices and do NOT demand compliance or urgent action (e.g., scholarship application/registration slips, tax payment receipts, Aadhaar/PAN acknowledgement receipts, birth/caste certificates, scheme enrollment letters, government job registration slips).
+   - "not_government": ONLY documents that are completely unrelated to government or legal administration, such as technical programming tutorials (e.g., Apache Spark, Python code), academic homework, personal chat screenshots, selfies, commercial product user manuals, or food recipes.
 
 3. Naming and Labels:
    - NEVER use the label "Unrecognized Document".
@@ -373,6 +377,26 @@ class AgentService:
         if category not in ("government_notice", "government_document_other", "not_government"):
             category = "government_notice"
             data["document_category"] = category
+
+        # Safeguard: Never reject sample/fictional notices as not_government
+        detected_type_str = (data.get("detected_type") or "").lower()
+        notice_indicators = [
+            "notice", "show cause", "gst", "tax", "challan", "summons", "court",
+            "demand", "warrant", "assessment", "penalty", "revenue", "department",
+            "tribunal", "compliance", "order", "inquiry"
+        ]
+        if category == "not_government" and any(ind in detected_type_str for ind in notice_indicators):
+            logger.info(f"Overriding 'not_government' to 'government_notice' for detected_type: '{data.get('detected_type')}'")
+            category = "government_notice"
+            data["document_category"] = "government_notice"
+            clean_title = data.get("detected_type", "")
+            for word in ["(fictional)", "(Fictional)", "fictional", "Fictional", "sample", "Sample"]:
+                clean_title = clean_title.replace(word, "").strip()
+            data["notice_type"] = clean_title.title() or "Government Notice"
+            if not data.get("urgency_level"):
+                data["urgency_level"] = "medium"
+            if not data.get("action_required"):
+                data["action_required"] = "Review the notice details and submit required response or clarification."
 
         # Strictly enforce field rules by category
         if category == "not_government":
