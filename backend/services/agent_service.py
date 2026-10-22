@@ -136,10 +136,11 @@ ANALYSIS_SCHEMA = {
         "helpline": {
             "type": ["object", "null"],
             "properties": {
-                "name": {"type": "string"},
-                "number": {"type": "string"},
+                "name": {"type": ["string", "null"]},
+                "number": {"type": ["string", "null"]},
+                "phone": {"type": ["string", "null"]},
+                "website": {"type": ["string", "null"]},
             },
-            "required": ["name", "number"],
             "description": "Verified helpline if known, else null.",
         },
         "is_high_risk": {
@@ -268,6 +269,29 @@ class AgentService:
                 detail="Could not connect to the AI analysis service. Please check your network and try again.",
             )
         except groq.APIStatusError as e:
+            # If tool validation failed on Groq's side, attempt to salvage failed_generation
+            recovered_data = None
+            try:
+                body = getattr(e, "body", None)
+                if isinstance(body, dict):
+                    err_obj = body.get("error", {})
+                    failed_gen = err_obj.get("failed_generation")
+                    if failed_gen:
+                        if isinstance(failed_gen, str):
+                            failed_gen = json.loads(failed_gen)
+                        if isinstance(failed_gen, dict) and "arguments" in failed_gen:
+                            args = failed_gen["arguments"]
+                            if isinstance(args, str):
+                                recovered_data = json.loads(args)
+                            elif isinstance(args, dict):
+                                recovered_data = args
+            except Exception as parse_err:
+                logger.warning(f"Could not recover failed_generation from Groq error: {parse_err}")
+
+            if recovered_data:
+                logger.info("Successfully recovered analysis data from Groq failed_generation payload!")
+                return self._normalize_category_fields(recovered_data, raw_text)
+
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail=f"Groq API error: {e.message}",
@@ -413,9 +437,20 @@ class AgentService:
             data["deadline"] = None
             data["amount"] = None
             data["scam_likelihood"] = "none"
-            data["scam_reasons"] = []
             if not data.get("action_required"):
                 data["action_required"] = "Keep this document safe for your records. No immediate compliance action is required."
+
+        # Normalize helpline if present
+        if isinstance(data.get("helpline"), dict):
+            hl = data["helpline"]
+            if "phone" in hl and not hl.get("number"):
+                hl["number"] = str(hl.get("phone") or "").strip()
+            if not hl.get("name"):
+                hl["name"] = data.get("authority") or "Official Helpline"
+            if not hl.get("number"):
+                data["helpline"] = None
+        elif data.get("helpline") is not None and not isinstance(data.get("helpline"), dict):
+            data["helpline"] = None
 
         try:
             return NoticeData(**data)
